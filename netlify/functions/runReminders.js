@@ -1,93 +1,87 @@
 // netlify/functions/runReminders.js
 
-const nodemailer = require("nodemailer");
 const { createClient } = require("@supabase/supabase-js");
+const nodemailer = require("nodemailer");
 
-// Load environment variables
 const {
   SUPABASE_URL,
   SUPABASE_SERVICE_ROLE_KEY,
-  FROM_EMAIL,
   SMTP_HOST,
   SMTP_PORT,
   SMTP_USER,
   SMTP_PASS,
+  FROM_EMAIL,
 } = process.env;
 
-// Validate env vars
-if (
-  !SUPABASE_URL ||
-  !SUPABASE_SERVICE_ROLE_KEY ||
-  !FROM_EMAIL ||
-  !SMTP_HOST ||
-  !SMTP_PORT ||
-  !SMTP_USER ||
-  !SMTP_PASS
-) {
-  console.error("❌ Missing environment variables.");
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  console.error("❌ Missing Supabase env variables.");
 }
 
-// Create Supabase client
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-// Create Nodemailer transporter
+// Email transporter
 const transporter = nodemailer.createTransport({
   host: SMTP_HOST,
-  port: Number(SMTP_PORT),
-  secure: false, // TLS is used automatically on port 587
+  port: parseInt(SMTP_PORT) || 587,
+  secure: false,
   auth: {
     user: SMTP_USER,
     pass: SMTP_PASS,
   },
 });
 
-exports.handler = async function (event, context) {
+exports.handler = async function () {
   try {
-    // Fetch events with reminders due and not yet sent
+    // Fetch upcoming events with email
     const { data: events, error } = await supabase
       .from("events")
       .select("*")
-      .lt("remind_at", new Date().toISOString())
-      .eq("sent", false);
+      .not("user_email", "is", null);
 
     if (error) throw error;
-    if (!events || events.length === 0) {
-      return {
-        statusCode: 200,
-        body: JSON.stringify({ message: "No reminders to send." }),
-      };
-    }
 
-    // Send reminder emails
-    const sent = [];
-    for (const evt of events) {
-      if (!evt.user_email) {
-        console.warn(`Event ${evt.id} has no user_email.`);
-        continue;
-      }
+    const now = new Date();
 
-      const mailOptions = {
-        from: FROM_EMAIL, // e.g., "Social Calendar <cibyj@hotmail.com>"
-        to: evt.user_email,
-        subject: `Reminder: ${evt.title}`,
-        text: `This is a reminder for your upcoming event:\n\nTitle: ${evt.title}\nDate: ${evt.date}\nTime: ${evt.time}`,
-      };
+    for (const event of events) {
+      if (!event.user_email) continue;
 
-      try {
-        await transporter.sendMail(mailOptions);
+      // Combine date and event_time
+      const eventDateTime = new Date(`${event.date}T${event.event_time}`);
 
-        // Mark event as sent
-        await supabase.from("events").update({ sent: true }).eq("id", evt.id);
-        sent.push(evt);
-        console.log(`✅ Sent reminder for event ${evt.title}`);
-      } catch (emailErr) {
-        console.error(`❌ Failed to send email for event ${evt.id}:`, emailErr);
+      // Reminder schedule
+      const reminders = [
+        { daysBefore: 7, type: "week" },
+        { daysBefore: 2, type: "twoDays" },
+        { daysBefore: 1, type: "oneDay" },
+      ];
+
+      for (const reminder of reminders) {
+        const sendDate = new Date(eventDateTime);
+        sendDate.setDate(sendDate.getDate() - reminder.daysBefore);
+
+        // Send if now >= sendDate and not already sent for this type
+        if (now >= sendDate && (!event.sent || event.sent !== reminder.type)) {
+          const mailOptions = {
+            from: FROM_EMAIL,
+            to: event.user_email,
+            subject: `Reminder: ${event.title} in ${reminder.daysBefore} day(s)`,
+            text: `Event: ${event.title}\nDescription: ${event.description || ""}\nDate & Time: ${event.date} ${event.event_time}`,
+          };
+
+          await transporter.sendMail(mailOptions);
+
+          // Mark this reminder as sent
+          await supabase
+            .from("events")
+            .update({ sent: reminder.type })
+            .eq("id", event.id);
+        }
       }
     }
 
     return {
       statusCode: 200,
-      body: JSON.stringify({ sent }),
+      body: JSON.stringify({ message: "Reminders processed successfully." }),
     };
   } catch (err) {
     console.error("Error running reminders:", err);
