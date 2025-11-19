@@ -1,36 +1,99 @@
-const { supabase, sendMail } = require('./_helpers');
+// netlify/functions/runReminders.js
 
-exports.handler = async function() {
+const nodemailer = require("nodemailer");
+const { createClient } = require("@supabase/supabase-js");
+
+// Load environment variables
+const {
+  SUPABASE_URL,
+  SUPABASE_SERVICE_ROLE_KEY,
+  FROM_EMAIL,
+  SMTP_HOST,
+  SMTP_PORT,
+  SMTP_USER,
+  SMTP_PASS,
+} = process.env;
+
+// Validate env vars
+if (
+  !SUPABASE_URL ||
+  !SUPABASE_SERVICE_ROLE_KEY ||
+  !FROM_EMAIL ||
+  !SMTP_HOST ||
+  !SMTP_PORT ||
+  !SMTP_USER ||
+  !SMTP_PASS
+) {
+  console.error("❌ Missing environment variables.");
+}
+
+// Create Supabase client
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+// Create Nodemailer transporter
+const transporter = nodemailer.createTransport({
+  host: SMTP_HOST,
+  port: Number(SMTP_PORT),
+  secure: false, // TLS is used automatically on port 587
+  auth: {
+    user: SMTP_USER,
+    pass: SMTP_PASS,
+  },
+});
+
+exports.handler = async function (event, context) {
   try {
-    const { data: settings } = await supabase.from('settings').select('reminder_email').eq('id',1).limit(1).single();
-    if (!settings || !settings.reminder_email) return { statusCode: 200, body: JSON.stringify({ sent: 0, reason: 'no email configured' }) };
-    const email = settings.reminder_email;
+    // Fetch events with reminders due and not yet sent
+    const { data: events, error } = await supabase
+      .from("events")
+      .select("*")
+      .lt("remind_at", new Date().toISOString())
+      .eq("sent", false);
 
-    const { data: events } = await supabase.from('events').select('*');
-    const offsets = [7,2,1];
-    const now = Date.now();
-    let sentCount = 0;
+    if (error) throw error;
+    if (!events || events.length === 0) {
+      return {
+        statusCode: 200,
+        body: JSON.stringify({ message: "No reminders to send." }),
+      };
+    }
 
-    for (const ev of events) {
-      const evTime = Number(ev.event_time);
-      for (const off of offsets) {
-        const offsetMs = off * 24 * 60 * 60 * 1000;
-        const target = evTime - offsetMs;
-        const windowStart = target - 15*60*1000;
-        const windowEnd = target + 15*60*1000;
-        const { data: already } = await supabase.from('reminders_sent').select('id').eq('event_id', ev.id).eq('offset_days', off).limit(1);
-        if (now >= windowStart && now < windowEnd && (!already || already.length === 0)) {
-          const subject = `Reminder: ${ev.title} in ${off} day${off>1?'s':''}`;
-          const text = `Reminder: ${ev.title}\nWhen: ${new Date(evTime).toLocaleString()}\n\nDescription:\n${ev.description||''}`;
-          await sendMail(email, subject, text, `<pre>${text}</pre>`);
-          await supabase.from('reminders_sent').insert([{ event_id: ev.id, offset_days: off, sent_at: now }]);
-          sentCount++;
-        }
+    // Send reminder emails
+    const sent = [];
+    for (const evt of events) {
+      if (!evt.user_email) {
+        console.warn(`Event ${evt.id} has no user_email.`);
+        continue;
+      }
+
+      const mailOptions = {
+        from: FROM_EMAIL, // e.g., "Social Calendar <cibyj@hotmail.com>"
+        to: evt.user_email,
+        subject: `Reminder: ${evt.title}`,
+        text: `This is a reminder for your upcoming event:\n\nTitle: ${evt.title}\nDate: ${evt.date}\nTime: ${evt.time}`,
+      };
+
+      try {
+        await transporter.sendMail(mailOptions);
+
+        // Mark event as sent
+        await supabase.from("events").update({ sent: true }).eq("id", evt.id);
+        sent.push(evt);
+        console.log(`✅ Sent reminder for event ${evt.title}`);
+      } catch (emailErr) {
+        console.error(`❌ Failed to send email for event ${evt.id}:`, emailErr);
       }
     }
 
-    return { statusCode: 200, body: JSON.stringify({ sent: sentCount }) };
+    return {
+      statusCode: 200,
+      body: JSON.stringify({ sent }),
+    };
   } catch (err) {
-    return { statusCode: 500, body: JSON.stringify({ error: String(err) }) };
+    console.error("Error running reminders:", err);
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ error: err.message }),
+    };
   }
 };
