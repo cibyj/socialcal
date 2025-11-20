@@ -32,18 +32,41 @@ export default function App(){
     alert('Saved');
   }
 
-  async function addOrUpdate(){
-    const evTime = new Date(datetime).getTime();
-    if (!title || !evTime) return alert('Title and date/time required');
-    if (editId){
-      await fetch(fnUrl('updateEvent'), {method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({id: editId, title, description:desc, event_time:evTime})});
-      setEditId(null);
-    } else {
-      await fetch(fnUrl('createEvent'), {method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({title, description:desc, event_time:evTime})});
-    }
-    setTitle(''); setDesc(''); setDatetime('');
-    load();
+ async function addOrUpdate(){
+  const evTime = new Date(datetime).getTime();
+  if (!title || !evTime) return alert('Title and date/time required');
+  if (!email) return alert('Please set your notification email first');
+
+  if (editId){
+    await fetch(fnUrl('updateEvent'), {
+      method:'POST',
+      headers:{'content-type':'application/json'},
+      body: JSON.stringify({
+        id: editId,
+        title,
+        description: desc,
+        event_time: evTime
+      })
+    });
+    setEditId(null);
+  } else {
+    await fetch(fnUrl('createEvent'), {
+      method:'POST',
+      headers:{'content-type':'application/json'},
+      body: JSON.stringify({
+        title,
+        description: desc,
+        event_time: evTime,
+        user_email: email   // <— ADDED HERE
+      })
+    });
   }
+
+  setTitle('');
+  setDesc('');
+  setDatetime('');
+  load();
+}
 
   function editEvent(ev){
     setEditId(ev.id);
