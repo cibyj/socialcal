@@ -4,20 +4,32 @@ exports.handler = async (event) => {
   try {
     const body = JSON.parse(event.body);
 
-    const { title, description, date, event_time, user_email } = body;
+    // Extract fields coming from frontend
+    const { title, description, date, event_time, user_email, remind_at } = body;
 
-    // Insert matching your EXACT table structure
+    // Basic validation to catch missing fields
+    if (!title || !date || !event_time || !user_email) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ error: "Missing required fields." }),
+      };
+    }
+
+    // Insert EXACTLY matching your table structure
     const { data, error } = await supabase
       .from("events")
-      .insert([{
-        title,
-        description,
-        date,
-        event_time,
-        'cibyj@hotmail.com',
-        sent: false,          // default
-        remind_at: null       // default
-      }]);
+      .insert([
+        {
+          title,
+          description,
+          event_time,
+          date,
+          user_email,      // THIS was broken before
+          sent: false,     // default
+          remind_at: remind_at || null
+        }
+      ])
+      .select();
 
     if (error) {
       console.error("Supabase Insert Error:", error);
