@@ -32,41 +32,46 @@ export default function App(){
     alert('Saved');
   }
 
- async function addOrUpdate(){
+async function addOrUpdate() {
   const evTime = new Date(datetime).getTime();
-  if (!title || !evTime) return alert('Title and date/time required');
-  if (!email) return alert('Please set your notification email first');
+  if (!title || !evTime || !email) return alert('Title, date/time, and email required');
 
-  if (editId){
+  if (editId) {
+    // Update existing event
     await fetch(fnUrl('updateEvent'), {
-      method:'POST',
-      headers:{'content-type':'application/json'},
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         id: editId,
         title,
         description: desc,
-        event_time: evTime
+        event_time: evTime,
+        user_email: email  // include user_email on update as well
       })
     });
     setEditId(null);
   } else {
+    // Add new event
     await fetch(fnUrl('createEvent'), {
-      method:'POST',
-      headers:{'content-type':'application/json'},
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         title,
         description: desc,
+        date: new Date(evTime).toISOString().split('T')[0], // store date separately
         event_time: evTime,
-        user_email: email   // <— ADDED HERE
+        user_email: email
       })
     });
   }
 
+  // Clear form
   setTitle('');
   setDesc('');
   setDatetime('');
-  load();
+  load(); // reload events
 }
+
 
   function editEvent(ev){
     setEditId(ev.id);
