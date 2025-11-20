@@ -18,8 +18,16 @@ export default function App() {
   async function load() {
     try {
       const r = await fetch(fnUrl('getEvents'));
-      const data = await r.json();
-      setEvents(Array.isArray(data) ? data : []);
+      const resp = await r.json();
+
+// If your function wraps data in { data: [...], error: ... }
+ if (Array.isArray(resp)) {
+  setEvents(resp);
+} else if (resp.data) {
+  setEvents(resp.data);
+} else {
+  setEvents([]);
+}
 
       const re = await fetch(fnUrl('getReminderEmail'));
       const je = await re.json();
@@ -101,7 +109,9 @@ export default function App() {
     }
   }
 
-  const upcoming = events.filter(e => e.event_time > Date.now()).slice(0,50);
+  const upcoming = events
+  .filter(e => new Date(e.event_time).getTime() > Date.now())
+  .slice(0, 50);
 
   return (
     <div style={{padding:20, maxWidth:900, margin:'0 auto', fontFamily:'Inter, system-ui, -apple-system, Roboto, Arial'}}>
