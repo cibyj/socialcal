@@ -65,13 +65,6 @@ async function addOrUpdate() {
     });
   }
 
-  // Clear form
-  setTitle('');
-  setDesc('');
-  setDatetime('');
-  load(); // reload events
-}
-
 
   function editEvent(ev){
     setEditId(ev.id);
