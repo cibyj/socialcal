@@ -23,7 +23,7 @@ export default function App() {
       // Handle both array and Supabase-style {data: [...], error: ...} responses
       const eventsData = Array.isArray(resp) ? resp : resp.data || [];
       setEvents(eventsData);
-
+      setEvents(data.map(e => ({ ...e, event_time: Number(e.event_time) })));
       const re = await fetch(fnUrl('getReminderEmail'));
       const je = await re.json();
       setEmail(je.reminder_email || '');
@@ -96,6 +96,7 @@ export default function App() {
 
   // Filter upcoming events
   const upcoming = events
+    .map(e => ({ ...e, event_time: Number(e.event_time) }))
     .filter(e => new Date(e.event_time).getTime() > Date.now())
     .slice(0, 50);
 
