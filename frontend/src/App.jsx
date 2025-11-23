@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from "react";
 
-const API =
-  import.meta.env.DEV
+// Automatically choose correct API base (local vs Netlify)
+const API_BASE =
+  window.location.hostname === "localhost"
     ? "http://localhost:3001/api"
-    : import.meta.env.VITE_API_BASE || "/.netlify/functions";
+    : "/.netlify/functions";
 
 function fnUrl(path) {
   if (path.startsWith("/")) path = path.slice(1);
-  return `${API}/${path}`;
+  return `${API_BASE}/${path}`;
 }
 
 export default function App() {
