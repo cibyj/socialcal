@@ -1,0 +1,138 @@
+require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
+const { createClient } = require('@supabase/supabase-js');
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+// ----------------------------
+// Supabase setup
+// ----------------------------
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+// Helper: convert event_time input into date column
+function computeDate(event_time) {
+  return new Date(event_time).toISOString().split('T')[0];
+}
+
+// ----------------------------
+// GET /api/events
+// ----------------------------
+app.get('/api/events', async (req, res) => {
+  const { data, error } = await supabase
+    .from('events')
+    .select('*')
+    .order('date', { ascending: true });
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+// ----------------------------
+// POST /api/events  (Create)
+// ----------------------------
+app.post('/api/events', async (req, res) => {
+  const { title, description, event_time, user_email } = req.body;
+
+  if (!title || !event_time || !user_email) {
+    return res.status(400).json({ error: "Missing required fields" });
+  }
+
+  const date = new Date(event_time).toISOString().split('T')[0]; // yyyy-mm-dd
+
+  const { data, error } = await supabase
+    .from('events')
+    .insert([{ title, description, event_time, user_email, date }])
+    .select('*');
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+// ----------------------------
+// PUT /api/events/:id  (Update)
+// ----------------------------
+app.put('/api/events/:id', async (req, res) => {
+  const id = req.params.id;
+  const { title, description, event_time, user_email } = req.body;
+
+  const date = new Date(event_time).toISOString().split('T')[0];
+
+  const { data, error } = await supabase
+    .from('events')
+    .update({ title, description, event_time, user_email, date })
+    .eq('id', id)
+    .select('*');
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+// ----------------------------
+// DELETE /api/events/:id
+// ----------------------------
+app.delete('/api/events/:id', async (req, res) => {
+  const id = req.params.id;
+
+  if (!id) return res.status(400).json({ error: "Event ID missing" });
+
+  const { error } = await supabase
+    .from('events')
+    .delete()
+    .eq('id', id);
+
+  if (error) return res.status(500).json({ error: error.message });
+
+  res.json({ success: true });
+});
+
+// =========================================================
+// REMINDER EMAIL ROUTES
+// Table: settings  (id: 1, reminder_email: text)
+// =========================================================
+
+// ----------------------------
+// GET /api/reminder-email
+// ----------------------------
+app.get('/api/reminder-email', async (req, res) => {
+  const { data, error } = await supabase
+    .from('settings')
+    .select('reminder_email')
+    .eq('id', 1)
+    .single();
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ reminder_email: data?.reminder_email || '' });
+});
+
+// ----------------------------
+// POST /api/reminder-email
+// ----------------------------
+app.post('/api/reminder-email', async (req, res) => {
+  const { reminder_email } = req.body;
+
+  // Upsert ensures row exists
+  const { data, error } = await supabase
+    .from('settings')
+    .upsert(
+      { id: 1, reminder_email },
+      { onConflict: 'id' }
+    )
+    .select('*');
+
+  if (error) return res.status(500).json({ error: error.message });
+
+  res.json({ success: true, reminder_email });
+});
+
+// ----------------------------
+// Start server
+// ----------------------------
+app.listen(3001, () => {
+  console.log('API running at http://localhost:3001');
+});
