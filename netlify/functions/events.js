@@ -1,17 +1,16 @@
 // netlify/functions/events.js
-
 const { createClient } = require("@supabase/supabase-js");
 
-// Only 1 client instance needed
+// Create Supabase client once
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// Helper: Send JSON response
+// JSON response helper
 function json(status, body) {
   return {
-    status,
+    statusCode: status,
     headers: {
       "Content-Type": "application/json",
       "Access-Control-Allow-Origin": "*",
@@ -22,19 +21,28 @@ function json(status, body) {
   };
 }
 
-// Main handler
 exports.handler = async (event) => {
-  const { httpMethod, path } = event;
+  const { httpMethod, rawPath } = event;
 
-  // Remove starting "/.netlify/functions/events"
-  const route = path.replace(/^\/?\.netlify\/functions\/events/, "").replace(/^\/+/, "");
+  // Normalize Netlify paths:
+  //
+  // rawPath might be:
+  //   /.netlify/functions/events
+  //   /.netlify/functions/events/123
+  //   /api/events
+  //   /api/events/123
+  //
+  let route = rawPath
+    .replace(/^\/?\.netlify\/functions\/events/, "")
+    .replace(/^\/?api\/events/, "")
+    .replace(/^\/+/, ""); // remove leading slash
 
-  // ----- OPTIONS (CORS preflight) -----
+  // ------------------ CORS -------------------
   if (httpMethod === "OPTIONS") {
     return json(200, { ok: true });
   }
 
-  // ----- GET /api/events -----
+  // ------------------ GET /events -------------------
   if (httpMethod === "GET" && route === "") {
     const { data, error } = await supabase
       .from("events")
@@ -45,7 +53,7 @@ exports.handler = async (event) => {
     return json(200, data);
   }
 
-  // Parse JSON body if needed
+  // Parse JSON body
   let body = {};
   if (event.body) {
     try {
@@ -55,7 +63,7 @@ exports.handler = async (event) => {
     }
   }
 
-  // ----- POST /api/events -----
+  // ------------------ POST /events -------------------
   if (httpMethod === "POST" && route === "") {
     const { title, description, event_time, user_email } = body;
 
@@ -74,11 +82,10 @@ exports.handler = async (event) => {
     return json(200, data);
   }
 
-  // -------- Extract ID for PUT / DELETE --------
-  const idMatch = route.match(/^events\/(\d+)$/);
-  const id = idMatch ? idMatch[1] : null;
+  // ---------------- Extract ID for PUT/DELETE -------------------
+  const id = route.match(/^\d+$/) ? route : null;
 
-  // ----- PUT /api/events/:id -----
+  // ------------------ PUT /events/:id -------------------
   if (httpMethod === "PUT" && id) {
     const { title, description, event_time, user_email } = body;
 
@@ -94,7 +101,7 @@ exports.handler = async (event) => {
     return json(200, data);
   }
 
-  // ----- DELETE /api/events/:id -----
+  // ------------------ DELETE /events/:id -------------------
   if (httpMethod === "DELETE" && id) {
     const { error } = await supabase.from("events").delete().eq("id", id);
 
@@ -102,6 +109,6 @@ exports.handler = async (event) => {
     return json(200, { success: true });
   }
 
-  // ----- Unknown route -----
-  return json(404, { error: `Route not found: ${httpMethod} ${route}` });
+  // ------------------ Unknown Route -------------------
+  return json(404, { error: `Route not found: ${httpMethod} /${route}` });
 };
