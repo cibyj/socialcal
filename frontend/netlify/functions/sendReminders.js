@@ -1,69 +1,77 @@
-import nodemailer from "nodemailer";
-import { createClient } from "@supabase/supabase-js";
+// sendReminders.js (Netlify Serverless Function)
+const { createClient } = require("@supabase/supabase-js");
+const nodemailer = require("nodemailer");
 
+// Build Supabase client
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// Email sender setup (replace with your SMTP if needed)
-const transporter = nodemailer.createTransport({
-  host: "smtp-mail.outlook.com",
-  port: 587,
-  secure: false, // MUST be false for Hotmail
-  auth: {
-    user: process.env.SMTP_USER,  // Hotmail address
-    pass: process.env.SMTP_PASS,  // Hotmail app password
+// JSON response helper
+const json = (status, body) => ({
+  statusCode: status,
+  headers: {
+    "Content-Type": "application/json"
   },
+  body: JSON.stringify(body),
 });
 
+exports.handler = async () => {
+  try {
+    // 1) Fetch upcoming events
+    const { data: events, error } = await supabase
+      .from("events")
+      .select("*");
 
-export default async () => {
-  const now = new Date();
-  const today = new Date(now.toISOString().substring(0, 10));
+    if (error) return json(500, { error: error.message });
 
-  function addDays(days) {
-    const d = new Date(today);
-    d.setDate(d.getDate() + days);
-    return d.toISOString().substring(0, 10);
-  }
+    const now = Date.now();
 
-  const targetDates = [
-    { days: 7, date: addDays(7) },
-    { days: 2, date: addDays(2) },
-    { days: 1, date: addDays(1) }
-  ];
+    // 7 days, 2 days, 1 day (in ms)
+    const windows = {
+      "7 days before": 7 * 24 * 60 * 60 * 1000,
+      "2 days before": 2 * 24 * 60 * 60 * 1000,
+      "1 day before": 1 * 24 * 60 * 60 * 1000,
+    };
 
-  const messages = [];
+    // 2) Initialize transporter
+    const transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: Number(process.env.SMTP_PORT),
+      secure: Number(process.env.SMTP_PORT) === 465,
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+    });
 
-  for (const t of targetDates) {
-    const { data, error } = await supabase.rpc("events_on_date", { target_date: t.date });
+    let count = 0;
 
-    if (error) {
-      console.error("Supabase error:", error);
-      continue;
+    // 3) Check each event
+    for (const ev of events) {
+      const evTime = new Date(ev.event_time).getTime();
+
+      for (const [label, diff] of Object.entries(windows)) {
+        if (Math.abs(evTime - now - diff) < 30 * 60 * 1000) {
+          // within ±30 minutes window
+
+          await transporter.sendMail({
+            from: process.env.FROM_EMAIL,
+            to: ev.user_email,
+            subject: `Reminder: "${ev.title}" is coming up`,
+            text: `Your event "${ev.title}" is happening on ${new Date(
+              ev.event_time
+            ).toLocaleString()}.\n\nThis is your reminder (${label}).`,
+          });
+
+          count++;
+        }
+      }
     }
 
-    for (const ev of data) {
-      const emailMsg = {
-        from: process.env.SMTP_USER,
-        to: ev.user_email,
-        subject: `Reminder: ${ev.title} in ${t.days} day(s)`,
-        html: `
-          <h2>Upcoming Event Reminder</h2>
-          <p><strong>Event:</strong> ${ev.title}</p>
-          <p><strong>Description:</strong> ${ev.description}</p>
-          <p><strong>Date:</strong> ${new Date(ev.event_time).toLocaleString()}</p>
-          <p>This is your ${t.days}-day reminder.</p>
-        `,
-      };
-
-      await transporter.sendMail(emailMsg);
-      messages.push(`Sent ${t.days}-day reminder for event: ${ev.title}`);
-    }
+    return json(200, { message: "Reminders sent", count });
+  } catch (e) {
+    return json(500, { error: e.message });
   }
-
-  return new Response(JSON.stringify({ status: "done", messages }), {
-    headers: { "Content-Type": "application/json" },
-  });
 };

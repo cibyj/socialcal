@@ -4,7 +4,7 @@
   command = "npm run build"
 
 [functions]
-  directory = "netlify/functions"
+  directory = "frontend/netlify/functions"
   node_bundler = "esbuild"
 
 [[redirects]]
@@ -13,6 +13,6 @@
   status = 200
   force = true
 
-[[scheduled]]
-command = "netlify/functions/sendReminders"
-schedule = "0 13 * * *" 
+# Run reminders every hour
+[functions."sendReminders-scheduled"]
+schedule = "0 * * * *"
