@@ -20,6 +20,8 @@ export default function App() {
   const [editId, setEditId] = useState(null);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
+  const [showPast, setShowPast] = useState(false);
+
 
   const showSuccess = (msg) => {
     setSuccess(msg);
@@ -124,6 +126,12 @@ async function deletePastEvents() {
   const upcoming = events
     .filter((e) => e.event_time.getTime() > Date.now())
     .slice(0, 50);
+
+const pastEvents = events
+  .filter((e) => e.event_time.getTime() <= Date.now())
+  .sort((a, b) => b.event_time - a.event_time) // most recent past first
+  .slice(0, 50);
+
 
   return (
     <div
@@ -273,6 +281,19 @@ async function deletePastEvents() {
       {/* Upcoming Events */}
       <section>
         <h2 style={{ fontSize: 18, marginBottom: 8, color: "#4F46E5" }}>Upcoming Events</h2>
+
+<div style={{ marginBottom: 16 }}>
+  <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+    <input
+      type="checkbox"
+      checked={showPast}
+      onChange={() => setShowPast(!showPast)}
+    />
+    <span style={{ color: "#4F46E5", fontSize: 14 }}>Show Past Events</span>
+  </label>
+</div>
+
+
 <button
   onClick={deletePastEvents}
   style={{
@@ -285,6 +306,63 @@ async function deletePastEvents() {
     marginBottom: 16
   }}
 >
+
+{showPast && (
+  <section style={{ marginTop: 32 }}>
+    <h2 style={{ fontSize: 18, marginBottom: 8, color: "#4F46E5" }}>
+      Past Events
+    </h2>
+
+    {pastEvents.length === 0 && (
+      <p style={{ marginTop: 8, color: "#6B7280" }}>No past events</p>
+    )}
+
+    <ul style={{ listStyle: "none", padding: 0, display: "grid", gap: 12 }}>
+      {pastEvents.map((ev) => (
+        <li
+          key={ev.id}
+          style={{
+            padding: 16,
+            backgroundColor: "white",
+            borderRadius: 8,
+            boxShadow: "0 2px 6px rgba(0,0,0,0.05)",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            opacity: 0.7, // visually separate past events
+          }}
+        >
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 16 }}>{ev.title}</div>
+            <div style={{ fontSize: 12, color: "#6B7280" }}>
+              {new Date(ev.event_time).toLocaleString()}
+            </div>
+            <div style={{ marginTop: 6, fontSize: 14, color: "#374151" }}>
+              {ev.description}
+            </div>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <button
+              onClick={() => deleteEvent(ev.id)}
+              style={{
+                padding: "6px 10px",
+                backgroundColor: "#EF4444",
+                color: "white",
+                border: "none",
+                borderRadius: 6,
+                cursor: "pointer",
+              }}
+            >
+              Delete
+            </button>
+          </div>
+        </li>
+      ))}
+    </ul>
+  </section>
+)}
+
+
   Delete Past Events
 </button>
 
