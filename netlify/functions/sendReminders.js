@@ -19,6 +19,8 @@ const json = (status, body) => ({
 
 exports.handler = async () => {
   try {
+    console.log("=== sendReminders START ===");
+
     // 1) Fetch upcoming events
     const { data: events, error } = await supabase
       .from("events")
@@ -26,9 +28,12 @@ exports.handler = async () => {
 
     if (error) return json(500, { error: error.message });
 
-    const now = Date.now();
+    console.log(`Loaded ${events.length} events from Supabase.`);
 
-    // 7 days, 2 days, 1 day (in ms)
+    const now = Date.now();
+    console.log("Current timestamp:", now, "|", new Date(now).toString());
+
+    // Reminder windows
     const windows = {
       "7 days before": 7 * 24 * 60 * 60 * 1000,
       "2 days before": 2 * 24 * 60 * 60 * 1000,
@@ -50,11 +55,24 @@ exports.handler = async () => {
 
     // 3) Check each event
     for (const ev of events) {
+
       const evTime = new Date(ev.event_time).getTime();
+      console.log("\nChecking event:", ev.title);
+      console.log("Event timestamp:", evTime, "|", new Date(ev.event_time).toString());
+
+      const msUntilEvent = evTime - now;
+      console.log("msUntilEvent:", msUntilEvent);
 
       for (const [label, diff] of Object.entries(windows)) {
-        if (Math.abs(evTime - now - diff) < 30 * 60 * 1000) {
-          // within ±30 minutes window
+
+        console.log(
+          `  → Window check: ${label} | target diff = ${diff}, actual diff = ${msUntilEvent}`
+        );
+
+        // MATCH CONDITION (±30 minutes)
+        if (Math.abs(msUntilEvent - diff) <= 30 * 60 * 1000) {
+
+          console.log(`  ✓ MATCH! Sending reminder (${label}) for "${ev.title}" to ${ev.user_email}`);
 
           await transporter.sendMail({
             from: process.env.FROM_EMAIL,
@@ -70,8 +88,12 @@ exports.handler = async () => {
       }
     }
 
+    console.log(`=== sendReminders COMPLETE — sent ${count} reminders ===`);
+
     return json(200, { message: "Reminders sent", count });
+
   } catch (e) {
+    console.error("ERROR in sendReminders:", e);
     return json(500, { error: e.message });
   }
 };

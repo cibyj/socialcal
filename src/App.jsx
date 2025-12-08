@@ -140,6 +140,7 @@ export default function App() {
   // Helper to format datetime without seconds
   const formatDateTime = (dt) =>
     new Date(dt).toLocaleString(undefined, {
+      weekday: "long",   // ← added
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
@@ -350,7 +351,13 @@ export default function App() {
                 >
                   <div>
                     <div style={{ fontWeight: 600, fontSize: 16 }}>{ev.title}</div>
-                    <div style={{ fontSize: 12, color: "#6B7280" }}>{formatDateTime(ev.event_time)}</div>
+                   
+                   <div style={{ fontSize: 12 }}>
+                     <span style={{ color: "green", fontWeight: 600 }}>
+                        {formatDateTime(ev.event_time)}
+                     </span>
+                   </div>
+
                     <div style={{ marginTop: 6, fontSize: 14, color: "#374151" }}>{ev.description}</div>
                   </div>
 
@@ -411,7 +418,13 @@ export default function App() {
             >
               <div>
                 <div style={{ fontWeight: 600, fontSize: 16 }}>{ev.title}</div>
-                <div style={{ fontSize: 12, color: "#6B7280" }}>{formatDateTime(ev.event_time)}</div>
+                
+               <div style={{ fontSize: 12 }}>
+                <span style={{ color: "green", fontWeight: 600 }}>
+                 {formatDateTime(ev.event_time)}
+                </span>
+              </div>
+
                 <div style={{ marginTop: 6, fontSize: 14, color: "#374151" }}>{ev.description}</div>
               </div>
 
