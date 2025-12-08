@@ -46,6 +46,23 @@ export default function App() {
     load();
   }, []);
 
+async function deletePastEvents() {
+  if (!confirm("Delete all past events? This cannot be undone.")) return;
+
+  try {
+    const r = await fetch(fnUrl("events/past"), { method: "DELETE" });
+    const data = await r.json();
+
+    if (!r.ok) throw new Error(data.error || "Failed to delete past events");
+
+    showSuccess("All past events deleted!");
+    await load();
+  } catch (err) {
+    setError(err.message);
+  }
+}
+
+
   async function addOrUpdate() {
     if (!title || !datetime || !email)
       return setError("Title, date/time, and email are required");
@@ -256,6 +273,21 @@ export default function App() {
       {/* Upcoming Events */}
       <section>
         <h2 style={{ fontSize: 18, marginBottom: 8, color: "#4F46E5" }}>Upcoming Events</h2>
+<button
+  onClick={deletePastEvents}
+  style={{
+    padding: "6px 10px",
+    backgroundColor: "#EF4444",
+    color: "white",
+    border: "none",
+    borderRadius: 6,
+    cursor: "pointer",
+    marginBottom: 16
+  }}
+>
+  Delete Past Events
+</button>
+
         {upcoming.length === 0 && (
           <p style={{ marginTop: 8, color: "#6B7280" }}>No upcoming events</p>
         )}

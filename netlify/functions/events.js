@@ -128,6 +128,21 @@ exports.handler = async (event) => {
     return json(200, { success: true });
   }
 
+// ------------------ DELETE /events/past -------------------
+// Deletes all events older than NOW
+if (httpMethod === "DELETE" && route === "past") {
+  const now = new Date().toISOString();
+
+  const { error } = await supabase
+    .from("events")
+    .delete()
+    .lt("event_time", now);
+
+  if (error) return json(500, { error: error.message });
+
+  return json(200, { success: true, message: "Past events deleted" });
+}
+
   // ------------------ Unknown Route -------------------
   return json(404, { error: `Route not found: ${httpMethod} /${route}` });
 };
