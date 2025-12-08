@@ -1,11 +1,8 @@
 // netlify/functions/events.js
-const { createClient } = require("@supabase/supabase-js");
+const { getSupabase } = require("./_helpers");
 
-// Create Supabase client once
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+// Create Supabase client (via helper which checks env vars)
+const supabase = getSupabase();
 
 // JSON response helper
 function json(status, body) {
@@ -22,17 +19,23 @@ function json(status, body) {
 }
 
 exports.handler = async (event) => {
-  const { httpMethod, rawPath } = event;
+  // Defensive: ensure supabase is available
+  if (!supabase) {
+    console.error("Supabase client not initialized. Check SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.");
+    return json(500, { error: "Server misconfiguration: missing Supabase credentials" });
+  }
 
-  // Normalize Netlify paths:
-  //
-  // rawPath might be:
-  //   /.netlify/functions/events
-  //   /.netlify/functions/events/123
-  //   /api/events
-  //   /api/events/123
-  //
-  let route = rawPath
+  const { httpMethod } = event;
+
+  // Normalize path from various invocation shapes (safe fallback to empty string)
+  const rawPath =
+    event.rawPath ||
+    event.path ||
+    (event.requestContext && event.requestContext.http && event.requestContext.http.path) ||
+    "";
+
+  // Normalize Netlify paths to get route portion
+  let route = String(rawPath)
     .replace(/^\/?\.netlify\/functions\/events/, "")
     .replace(/^\/?api\/events/, "")
     .replace(/^\/+/, ""); // remove leading slash
@@ -44,13 +47,21 @@ exports.handler = async (event) => {
 
   // ------------------ GET /events -------------------
   if (httpMethod === "GET" && route === "") {
-    const { data, error } = await supabase
-      .from("events")
-      .select("*")
-      .order("event_time", { ascending: true });
+    try {
+      const { data, error } = await supabase
+        .from("events")
+        .select("*")
+        .order("event_time", { ascending: true });
 
-    if (error) return json(500, { error: error.message });
-    return json(200, data);
+      if (error) {
+        console.error("Supabase error (GET /events):", error);
+        return json(500, { error: error.message });
+      }
+      return json(200, data);
+    } catch (err) {
+      console.error("Unhandled error (GET /events):", err);
+      return json(500, { error: "Internal server error" });
+    }
   }
 
   // Parse JSON body
@@ -78,7 +89,10 @@ exports.handler = async (event) => {
       .insert([{ title, description, event_time, user_email, date }])
       .select("*");
 
-    if (error) return json(500, { error: error.message });
+    if (error) {
+      console.error("Supabase error (POST /events):", error);
+      return json(500, { error: error.message });
+    }
     return json(200, data);
   }
 
@@ -88,7 +102,6 @@ exports.handler = async (event) => {
   // ------------------ PUT /events/:id -------------------
   if (httpMethod === "PUT" && id) {
     const { title, description, event_time, user_email } = body;
-
     const date = new Date(event_time).toISOString().split("T")[0];
 
     const { data, error } = await supabase
@@ -97,7 +110,10 @@ exports.handler = async (event) => {
       .eq("id", id)
       .select("*");
 
-    if (error) return json(500, { error: error.message });
+    if (error) {
+      console.error(`Supabase error (PUT /events/${id}):`, error);
+      return json(500, { error: error.message });
+    }
     return json(200, data);
   }
 
@@ -105,7 +121,10 @@ exports.handler = async (event) => {
   if (httpMethod === "DELETE" && id) {
     const { error } = await supabase.from("events").delete().eq("id", id);
 
-    if (error) return json(500, { error: error.message });
+    if (error) {
+      console.error(`Supabase error (DELETE /events/${id}):`, error);
+      return json(500, { error: error.message });
+    }
     return json(200, { success: true });
   }
 
