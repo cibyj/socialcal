@@ -8,39 +8,43 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// JSON response helper
+// Helper for JSON responses
 const json = (status, body) => ({
   statusCode: status,
-  headers: {
-    "Content-Type": "application/json"
-  },
+  headers: { "Content-Type": "application/json" },
   body: JSON.stringify(body),
 });
 
-exports.handler = async () => {
+exports.handler = async (event) => {
   try {
-    console.log("=== sendReminders START ===");
+    const params = event.queryStringParameters || {};
+    const dryRun = params.dryRun === "true";
+    const testEmail = params.testEmail || null;
 
-    // 1) Fetch upcoming events
+    // Safety check
+    if (dryRun && !testEmail) {
+      return json(400, {
+        error: "When dryRun=true, you MUST include testEmail=email@domain.com",
+      });
+    }
+
+    // Fetch ALL events
     const { data: events, error } = await supabase
       .from("events")
       .select("*");
 
     if (error) return json(500, { error: error.message });
 
-    console.log(`Loaded ${events.length} events from Supabase.`);
-
     const now = Date.now();
-    console.log("Current timestamp:", now, "|", new Date(now).toString());
 
-    // Reminder windows
+    // Reminder windows (ms)
     const windows = {
       "7 days before": 7 * 24 * 60 * 60 * 1000,
       "2 days before": 2 * 24 * 60 * 60 * 1000,
       "1 day before": 1 * 24 * 60 * 60 * 1000,
     };
 
-    // 2) Initialize transporter
+    // Initialize email transporter
     const transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST,
       port: Number(process.env.SMTP_PORT),
@@ -51,49 +55,58 @@ exports.handler = async () => {
       },
     });
 
-    let count = 0;
+    let sent = [];
 
-    // 3) Check each event
+    // Loop through events
     for (const ev of events) {
-
       const evTime = new Date(ev.event_time).getTime();
-      console.log("\nChecking event:", ev.title);
-      console.log("Event timestamp:", evTime, "|", new Date(ev.event_time).toString());
 
-      const msUntilEvent = evTime - now;
-      console.log("msUntilEvent:", msUntilEvent);
+      // --- DRY RUN MODE ---
+      if (dryRun) {
+        await transporter.sendMail({
+          from: process.env.FROM_EMAIL,
+          to: testEmail,        // ALWAYS send to testEmail  
+          subject: `[DRY RUN] Reminder test: "${ev.title}"`,
+          text: `This is a DRY RUN test.\n\nEvent:\n"${ev.title}"\nScheduled for: ${new Date(ev.event_time).toLocaleString()}\n\nThis email proves your SMTP settings work.`,
+        });
 
+        sent.push({
+          title: ev.title,
+          to: testEmail,
+          mode: "dry-run",
+        });
+
+        // go to next event (do NOT check windows)
+        continue;
+      }
+
+      // --- NORMAL MODE ---
       for (const [label, diff] of Object.entries(windows)) {
-
-        console.log(
-          `  → Window check: ${label} | target diff = ${diff}, actual diff = ${msUntilEvent}`
-        );
-
-        // MATCH CONDITION (±30 minutes)
-        if (Math.abs(msUntilEvent - diff) <= 30 * 60 * 1000) {
-
-          console.log(`  ✓ MATCH! Sending reminder (${label}) for "${ev.title}" to ${ev.user_email}`);
-
+        if (Math.abs(evTime - now - diff) < 30 * 60 * 1000) {
           await transporter.sendMail({
             from: process.env.FROM_EMAIL,
             to: ev.user_email,
             subject: `Reminder: "${ev.title}" is coming up`,
-            text: `Your event "${ev.title}" is happening on ${new Date(
+            text: `Your event "${ev.title}" happens on ${new Date(
               ev.event_time
-            ).toLocaleString()}.\n\nThis is your reminder (${label}).`,
+            ).toLocaleString()}.\n\nReminder window: ${label}\n`,
           });
 
-          count++;
+          sent.push({
+            title: ev.title,
+            to: ev.user_email,
+            label,
+          });
         }
       }
     }
 
-    console.log(`=== sendReminders COMPLETE — sent ${count} reminders ===`);
-
-    return json(200, { message: "Reminders sent", count });
+    return json(200, {
+      message: dryRun ? "Dry run completed" : "Reminders sent",
+      sent,
+    });
 
   } catch (e) {
-    console.error("ERROR in sendReminders:", e);
     return json(500, { error: e.message });
   }
 };
