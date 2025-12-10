@@ -14,5 +14,5 @@
   force = true
 
 # Run reminders every hour
-[functions."sendReminders-scheduled"]
+[functions."sendReminder-scheduled"]
 schedule = "0 * * * *"
