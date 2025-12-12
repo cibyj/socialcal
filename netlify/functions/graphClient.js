@@ -1,5 +1,5 @@
-import { DeviceCodeCredential } from "@azure/identity";
 import { Client } from "@microsoft/microsoft-graph-client";
+import { ClientSecretCredential } from "@azure/identity";
 import "isomorphic-fetch";
 
 let clientInstance = null;
@@ -7,15 +7,19 @@ let clientInstance = null;
 export function getGraphClient() {
   if (clientInstance) return clientInstance;
 
-  const credential = new DeviceCodeCredential({
-    tenantId: process.env.GRAPH_TENANT_ID || "consumers",
-    clientId: process.env.GRAPH_CLIENT_ID,
-    userPromptCallback: (info) => {
-      console.log("======== MICROSOFT GRAPH DEVICE LOGIN REQUIRED ========");
-      console.log(info.message);
-      console.log("========================================================");
-    }
-  });
+  const tenantId = process.env.GRAPH_TENANT_ID;
+  const clientId = process.env.GRAPH_CLIENT_ID;
+  const clientSecret = process.env.GRAPH_CLIENT_SECRET;
+
+  if (!tenantId || !clientId || !clientSecret) {
+    throw new Error("Missing GRAPH_TENANT_ID or GRAPH_CLIENT_ID or GRAPH_CLIENT_SECRET");
+  }
+
+  const credential = new ClientSecretCredential(
+    tenantId,
+    clientId,
+    clientSecret
+  );
 
   clientInstance = Client.initWithMiddleware({
     authProvider: {
