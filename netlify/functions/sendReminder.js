@@ -1,72 +1,105 @@
-import { getGraphClient } from "./graphClient.js";
-import { buildEmailHTML } from "./utils.js";
+// netlify/functions/sendReminders.js
+const { createClient } = require("@supabase/supabase-js");
+const nodemailer = require("nodemailer");
 
-export async function handler(event, context) {
+// Supabase client
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+const json = (status, body) => ({
+  statusCode: status,
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(body),
+});
+
+exports.handler = async (event) => {
   try {
-    if (event.httpMethod !== "POST") {
-      return { statusCode: 405, body: "Method Not Allowed" };
-    }
+    const isDryRun =
+      event.httpMethod === "POST" &&
+      event.body &&
+      JSON.parse(event.body).dryRun === true;
 
-    const body = JSON.parse(event.body);
-    const { to, subject, eventData, dryRun } = body;
+    console.log("Send reminders started. Dry run:", isDryRun);
 
-    if (!to || !subject || !eventData) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ error: "Missing to, subject, or eventData" })
-      };
-    }
+    const { data: events, error } = await supabase
+      .from("events")
+      .select("*");
 
-    const html = buildEmailHTML(eventData);
+    if (error) return json(500, { error: error.message });
 
-    // ======================================================
-    // DRY RUN MODE — Do NOT send email, just simulate
-    // ======================================================
-    if (dryRun) {
-      console.log("======== DRY RUN MODE (No email sent) ========");
-      console.log("To:", to);
-      console.log("Subject:", subject);
-      console.log("HTML Preview:", html);
-      console.log("=============================================");
-      return {
-        statusCode: 200,
-        body: JSON.stringify({
-          message: "Dry run executed — no email sent",
-          preview: {
-            to,
-            subject,
-            html
-          }
-        })
-      };
-    }
+    const now = Date.now();
 
-    // ======================================================
-    // REAL MODE — Send via Microsoft Graph
-    // ======================================================
-    const client = getGraphClient();
+    const windows = {
+      "7 days before": 7 * 24 * 60 * 60 * 1000,
+      "2 days before": 2 * 24 * 60 * 60 * 1000,
+      "1 day before": 1 * 24 * 60 * 60 * 1000,
+    };
 
-    await client.api("/me/sendMail").post({
-      message: {
-        subject,
-        body: {
-          contentType: "HTML",
-          content: html
-        },
-        toRecipients: [{ emailAddress: { address: to } }]
-      }
+    const transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: Number(process.env.SMTP_PORT),
+      secure: true,
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
     });
 
-    return {
-      statusCode: 200,
-      body: JSON.stringify({ message: "Email sent successfully" })
-    };
+    let sent = 0;
+    const previews = [];
 
+    for (const ev of events) {
+      const evTime = new Date(ev.event_time).getTime();
+
+      for (const [label, diff] of Object.entries(windows)) {
+        if (Math.abs(evTime - now - diff) < 30 * 60 * 1000) {
+          const subject = `Reminder: "${ev.title}" is coming up`;
+
+          const html = `
+            <div style="font-family: Arial, sans-serif; padding: 16px;">
+              <h2>${ev.title}</h2>
+              <p><strong>Date:</strong> ${new Date(
+                ev.event_time
+              ).toLocaleString()}</p>
+              <p>${ev.description || ""}</p>
+              <hr />
+              <p style="color: gray; font-size: 12px;">
+                This is your ${label} reminder.
+              </p>
+            </div>
+          `;
+
+          if (isDryRun) {
+            previews.push({
+              to: ev.user_email,
+              subject,
+              html,
+            });
+            continue;
+          }
+
+          await transporter.sendMail({
+            from: process.env.FROM_EMAIL,
+            to: ev.user_email,
+            subject,
+            html,
+          });
+
+          sent++;
+        }
+      }
+    }
+
+    return json(200, {
+      ok: true,
+      dryRun: isDryRun,
+      sent,
+      previews,
+    });
   } catch (err) {
-    console.error("Error sending reminder:", err);
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ error: err.message || "Unknown error" })
-    };
+    console.error("Reminder error:", err);
+    return json(500, { error: err.message });
   }
-}
+};
