@@ -16,12 +16,13 @@ const json = (status, body) => ({
 
 exports.handler = async (event) => {
   try {
-    const isDryRun =
-      event.httpMethod === "POST" &&
-      event.body &&
-      JSON.parse(event.body).dryRun === true;
+    const body = event.body ? JSON.parse(event.body) : {};
+    const isDryRun = body.dryRun === true;
+    const forceSend = body.forceSend === true;
 
-    console.log("Send reminders started. Dry run:", isDryRun);
+    console.log("📨 Send reminders started");
+    console.log("Dry run:", isDryRun);
+    console.log("Force send:", forceSend);
 
     const { data: events, error } = await supabase
       .from("events")
@@ -30,6 +31,7 @@ exports.handler = async (event) => {
     if (error) return json(500, { error: error.message });
 
     const now = Date.now();
+    console.log("Current time:", new Date(now).toISOString());
 
     const windows = {
       "7 days before": 7 * 24 * 60 * 60 * 1000,
@@ -53,8 +55,16 @@ exports.handler = async (event) => {
     for (const ev of events) {
       const evTime = new Date(ev.event_time).getTime();
 
+      console.log("— Checking event:", ev.title);
+      console.log("Event time:", new Date(evTime).toISOString());
+
       for (const [label, diff] of Object.entries(windows)) {
-        if (Math.abs(evTime - now - diff) < 30 * 60 * 1000) {
+        const delta = Math.abs(evTime - now - diff);
+
+        if (forceSend || delta < 30 * 60 * 1000) {
+          console.log(`✅ MATCH (${label}) for "${ev.title}"`);
+          if (forceSend) console.log("🚨 FORCE SEND ENABLED");
+
           const subject = `Reminder: "${ev.title}" is coming up`;
 
           const html = `
@@ -87,19 +97,23 @@ exports.handler = async (event) => {
             html,
           });
 
+          console.log("📧 Email sent to:", ev.user_email);
           sent++;
         }
       }
     }
 
+    console.log("✅ Reminder run complete. Emails sent:", sent);
+
     return json(200, {
       ok: true,
       dryRun: isDryRun,
+      forceSend,
       sent,
       previews,
     });
   } catch (err) {
-    console.error("Reminder error:", err);
+    console.error("❌ Reminder error:", err);
     return json(500, { error: err.message });
   }
 };
