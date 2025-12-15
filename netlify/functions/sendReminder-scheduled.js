@@ -3,28 +3,28 @@ import fetch from "node-fetch";
 export async function handler() {
   const url = `${process.env.URL}/.netlify/functions/sendReminder`;
 
+  console.log("⏰ Scheduled reminder trigger fired");
+
   try {
     const r = await fetch(url, {
       method: "POST",
-      body: JSON.stringify({
-        to: process.env.TEST_EMAIL,
-        subject: "Scheduled Reminder Check",
-        dryRun: true,
-        eventData: {
-          title: "Scheduled Reminder Test",
-          date: new Date().toLocaleString(),
-          notes: "This is an automated scheduled test."
-        }
-      })
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({}), // IMPORTANT: no dryRun, no test payload
     });
 
-    const j = await r.json();
+    const text = await r.text();
 
     return {
       statusCode: 200,
-      body: JSON.stringify({ ok: true, result: j }),
+      body: JSON.stringify({
+        ok: true,
+        response: text,
+      }),
     };
   } catch (err) {
+    console.error("Scheduled trigger failed:", err);
     return {
       statusCode: 500,
       body: JSON.stringify({ error: err.message }),

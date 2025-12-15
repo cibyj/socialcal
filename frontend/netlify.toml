@@ -13,6 +13,6 @@
   status = 200
   force = true
 
-# Run reminders every hour
+# Run reminders every 15 minutes
 [functions."sendReminder-scheduled"]
-schedule = "0 * * * *"
+  schedule = "*/15 * * * *"
