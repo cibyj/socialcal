@@ -1,4 +1,4 @@
-// netlify/functions/sendReminders.js
+// netlify/functions/sendReminder.js
 const { createClient } = require("@supabase/supabase-js");
 const nodemailer = require("nodemailer");
 
@@ -31,13 +31,16 @@ exports.handler = async (event) => {
     if (error) return json(500, { error: error.message });
 
     const now = Date.now();
-    console.log("Current time:", new Date(now).toISOString());
+    console.log("⏱ Current time:", new Date(now).toISOString());
 
     const windows = {
       "7 days before": 7 * 24 * 60 * 60 * 1000,
       "2 days before": 2 * 24 * 60 * 60 * 1000,
       "1 day before": 1 * 24 * 60 * 60 * 1000,
     };
+
+    // ⛑️ Wider window to tolerate Netlify cron drift
+    const WINDOW_MS = 60 * 60 * 1000; // 1 hour
 
     const transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST,
@@ -60,8 +63,19 @@ exports.handler = async (event) => {
 
       for (const [label, diff] of Object.entries(windows)) {
         const delta = Math.abs(evTime - now - diff);
+        const deltaMin = Math.round(delta / 60000);
 
-        if (forceSend || delta < 30 * 60 * 1000) {
+        console.log(
+          `⏱ ${label} | delta=${deltaMin} min | forceSend=${forceSend}`
+        );
+
+        // Skip if already sent (unless forceSend)
+        if (!forceSend && ev.reminders_sent?.[label]) {
+          console.log(`⏭️ Already sent "${label}" for "${ev.title}"`);
+          continue;
+        }
+
+        if (forceSend || delta < WINDOW_MS) {
           console.log(`✅ MATCH (${label}) for "${ev.title}"`);
           if (forceSend) console.log("🚨 FORCE SEND ENABLED");
 
@@ -86,6 +100,7 @@ exports.handler = async (event) => {
               to: ev.user_email,
               subject,
               html,
+              label,
             });
             continue;
           }
@@ -98,6 +113,18 @@ exports.handler = async (event) => {
           });
 
           console.log("📧 Email sent to:", ev.user_email);
+
+          // Mark reminder as sent (idempotency)
+          await supabase
+            .from("events")
+            .update({
+              reminders_sent: {
+                ...(ev.reminders_sent || {}),
+                [label]: true,
+              },
+            })
+            .eq("id", ev.id);
+
           sent++;
         }
       }
