@@ -15,4 +15,4 @@
 
 # Run reminders every hour
 [functions."sendReminder-scheduled"]
-schedule = "0 * * * *"
+  schedule = "*/15 * * * *"

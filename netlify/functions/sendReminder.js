@@ -40,7 +40,7 @@ exports.handler = async (event) => {
     };
 
     // ⛑️ Wider window to tolerate Netlify cron drift
-    const WINDOW_MS = 90 * 60 * 1000; // 1 hour
+    const WINDOW_MS = 2 * 60 * 60 * 1000; // 2 hour
 
     const transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST,
@@ -64,10 +64,16 @@ exports.handler = async (event) => {
       for (const [label, diff] of Object.entries(windows)) {
         const delta = Math.abs(evTime - now - diff);
         const deltaMin = Math.round(delta / 60000);
+        const msUntilEvent = evTime - now;
 
         console.log(
           `⏱ ${label} | delta=${deltaMin} min | forceSend=${forceSend}`
         );
+
+       console.log(
+         `⏱ ${label} | msUntilEvent=${Math.round(msUntilEvent / 60000)} min | forceSend=${forceSend}`
+       );
+
 
         // Skip if already sent (unless forceSend)
         if (!forceSend && ev.reminders_sent?.[label]) {
@@ -75,7 +81,11 @@ exports.handler = async (event) => {
           continue;
         }
 
-        if (forceSend || delta < WINDOW_MS) {
+
+        if (
+          forceSend ||
+         (msUntilEvent <= diff && msUntilEvent > diff - WINDOW_MS)
+        ) {
           console.log(`✅ MATCH (${label}) for "${ev.title}"`);
           if (forceSend) console.log("🚨 FORCE SEND ENABLED");
 
