@@ -91,19 +91,24 @@ exports.handler = async (event) => {
 
           const subject = `Reminder: "${ev.title}" is coming up`;
 
-          const html = `
-            <div style="font-family: Arial, sans-serif; padding: 16px;">
-              <h2>${ev.title}</h2>
-              <p><strong>Date:</strong> ${new Date(
-                ev.event_time
-              ).toLocaleString()}</p>
-              <p>${ev.description || ""}</p>
-              <hr />
-              <p style="color: gray; font-size: 12px;">
-                This is your ${label} reminder.
-              </p>
-            </div>
-          `;
+          const formattedTime = new Date(ev.event_time).toLocaleString("en-US", {
+           timeZone: "America/New_York",
+           dateStyle: "full",
+           timeStyle: "short",
+           });
+
+        const html = `
+          <div style="font-family: Arial, sans-serif; padding: 16px;">
+           <h2>${ev.title}</h2>
+           <p><strong>Date:</strong> ${formattedTime}</p>
+           <p>${ev.description || ""}</p>
+           <hr />
+           <p style="color: gray; font-size: 12px;">
+             This is your ${label} reminder.
+           </p>
+        </div>
+        `;
+
 
           if (isDryRun) {
             previews.push({
