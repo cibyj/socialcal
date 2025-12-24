@@ -40,7 +40,7 @@ exports.handler = async (event) => {
     };
 
     // ⛑️ Wider window to tolerate Netlify cron drift
-    const WINDOW_MS = 90 * 60 * 1000; // 1 1/2 hour
+    const WINDOW_MS = 60 * 60 * 1000; // 1 hour
 
     const transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST,
